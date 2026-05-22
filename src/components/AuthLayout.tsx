@@ -28,14 +28,17 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
       });
       
       const text = await res.text();
-      let data = {};
+      let data: any = {};
       try {
         data = text ? JSON.parse(text) : {};
       } catch (e) {
-        throw new Error(`Server returned non-JSON response (Status ${res.status}): ` + text.substring(0, 50));
+        throw new Error(`Server returned non-JSON (Status ${res.status}): ` + text.substring(0, 50));
       }
 
-      if (!res.ok) throw new Error((data as any).error || "Verification failed");
+      if (!res.ok) {
+        const errorDetail = data.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : JSON.stringify(data);
+        throw new Error(`Status ${res.status}: ${errorDetail || "Verification failed"}`);
+      }
       
       setGoogleUser(data);
       setCustomName(data.name || "");
