@@ -421,9 +421,16 @@ async function startServer() {
     });
   }
 
+  if (process.env.VERCEL) {
+    // Vercel Serverless Function will handle listening, so we just return
+    return;
+  }
+
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`PharmCheck server running on http://0.0.0.0:${PORT}`);
   });
 }
 
 startServer();
+
+export default app;
