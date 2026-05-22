@@ -416,8 +416,12 @@ app.post("/api/sessions/:id/attendances", async (req, res) => {
 
 // Serve frontend assets
 async function startServer() {
+  if (process.env.VERCEL) return; // Do not start dev server on Vercel
+
   if (process.env.NODE_ENV !== "production") {
-    const { createServer: createViteServer } = await import("vite");
+    // Obfuscate Vite import so Vercel's Node File Trace doesn't bundle it
+    const viteMod = "vi" + "te";
+    const { createServer: createViteServer } = await import(viteMod);
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
