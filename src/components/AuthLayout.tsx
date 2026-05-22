@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { UserProfile, UserRole } from "../types";
 import { LogIn, Sparkles, ShieldAlert, CheckCircle, RefreshCw } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
-import { authClient } from "../lib/auth";
+import { authClient, neonClient } from "../lib/neon";
 
 interface AuthLayoutProps {
   onLogin: (user: UserProfile) => void;
@@ -25,9 +25,10 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
         const { data } = await authClient.getSession();
         if (data?.user) {
           // Check if profile exists in our database
-          const res = await fetch(`/api/users/${data.user.id}`);
-          if (res.ok) {
-            const profile = await res.json();
+          const { data: profiles, error } = await neonClient.from('user_profiles').select('*').eq('uid', data.user.id);
+          
+          if (!error && profiles && profiles.length > 0) {
+            const profile = profiles[0];
             // Automatically log in
             onLogin({
               uid: profile.uid,
@@ -39,8 +40,6 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
             });
             return;
           }
-          
-          // Otherwise show setup form
           setGoogleUser(data.user);
           setCustomName(data.user.name || "");
           setCustomEmail(data.user.email || "");
@@ -83,19 +82,15 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
       setIsVerifying(true);
       const uid = googleUser.id || "user_" + Math.random().toString(36).substring(2, 11);
       
-      const res = await fetch("/api/users", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          uid,
-          email: customEmail,
-          name: customName,
-          role: selectedRole,
-          student_id: selectedRole === "student" ? customStudentId : null
-        })
-      });
+      const { error } = await neonClient.from('user_profiles').insert([{
+        uid,
+        email: customEmail,
+        name: customName,
+        role: selectedRole,
+        student_id: selectedRole === "student" ? customStudentId : null
+      }]);
 
-      if (!res.ok) throw new Error("Failed to save user profile");
+      if (error) throw new Error("Failed to save user profile: " + error.message);
 
       const googleProfile: UserProfile = {
         uid,

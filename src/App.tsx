@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
 import { motion, AnimatePresence } from "motion/react";
-import { authClient } from "./lib/auth";
+import { authClient, neonClient } from "./lib/neon";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -62,7 +62,7 @@ export default function App() {
     
     if (confirm("คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลสิทธิ์การเข้าใช้งาน? คุณจะต้องเลือกว่าเป็นอาจารย์หรือนักศึกษาใหม่ในการเข้าสู่ระบบครั้งถัดไป")) {
       try {
-        await fetch(`/api/users/${currentUser.uid}`, { method: "DELETE" });
+        await neonClient.from('user_profiles').delete().eq('uid', currentUser.uid);
       } catch (err) {
         console.error("Failed to delete user profile", err);
       }

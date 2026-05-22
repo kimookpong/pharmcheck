@@ -141,6 +141,41 @@ async function initializeDb() {
         image TEXT,
         PRIMARY KEY (id)
       );
+      
+      -- Grant permissions for Neon Data API
+      GRANT USAGE ON SCHEMA public TO authenticated;
+      GRANT USAGE ON SCHEMA public TO anonymous;
+      
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO authenticated;
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO anonymous;
+      
+      -- Grant usage on sequences for SERIAL columns
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO authenticated;
+      GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO anonymous;
+
+      -- Neon Data API requires explicit RLS policies if RLS is enabled by default or forced.
+      -- We will enable RLS but add a permissive policy so the app functions correctly
+      -- without complex auth mapping (since we validate on the client side for now).
+      
+      -- user_profiles
+      ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+      DROP POLICY IF EXISTS "allow_all_user_profiles" ON user_profiles;
+      CREATE POLICY "allow_all_user_profiles" ON user_profiles FOR ALL USING (true) WITH CHECK (true);
+
+      -- subjects
+      ALTER TABLE subjects ENABLE ROW LEVEL SECURITY;
+      DROP POLICY IF EXISTS "allow_all_subjects" ON subjects;
+      CREATE POLICY "allow_all_subjects" ON subjects FOR ALL USING (true) WITH CHECK (true);
+
+      -- class_sessions
+      ALTER TABLE class_sessions ENABLE ROW LEVEL SECURITY;
+      DROP POLICY IF EXISTS "allow_all_class_sessions" ON class_sessions;
+      CREATE POLICY "allow_all_class_sessions" ON class_sessions FOR ALL USING (true) WITH CHECK (true);
+
+      -- attendances
+      ALTER TABLE attendances ENABLE ROW LEVEL SECURITY;
+      DROP POLICY IF EXISTS "allow_all_attendances" ON attendances;
+      CREATE POLICY "allow_all_attendances" ON attendances FOR ALL USING (true) WITH CHECK (true);
     `);
 
     console.log("Neon PostgreSQL database tables checked and verified successfully!");
@@ -157,308 +192,11 @@ if (!process.env.VERCEL) {
 }
 
 // -------------------------------------------------------------
-// User Profiles API Endpoints
+// Note: All database queries are now handled directly by the frontend
+// using the Neon Data API (@neondatabase/neon-js data client).
+// This server now only acts as a Vite dev server and database initializer.
 // -------------------------------------------------------------
 
-// Get user profile
-app.get("/api/users/:uid", async (req, res) => {
-  try {
-    const { uid } = req.params;
-    const result = await pool.query(
-      "SELECT uid, email, name, role, student_id FROM user_profiles WHERE uid = $1",
-      [uid]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    res.json(result.rows[0]);
-  } catch (err: any) {
-    console.error("GET /api/users/:uid error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Create or update user profile
-app.post("/api/users", async (req, res) => {
-  try {
-    const { uid, email, name, role, student_id } = req.body;
-    if (!uid || !email || !name || !role) {
-      return res.status(400).json({ error: "Missing required fields" });
-    }
-
-    const result = await pool.query(
-      `INSERT INTO user_profiles (uid, email, name, role, student_id)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (uid) 
-       DO UPDATE SET name = $3, role = $4, student_id = $5
-       RETURNING *`,
-      [uid, email, name, role, student_id || null]
-    );
-    res.json(result.rows[0]);
-  } catch (err: any) {
-    console.error("POST /api/users error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Delete user profile
-app.delete("/api/users/:uid", async (req, res) => {
-  try {
-    const { uid } = req.params;
-    const result = await pool.query(
-      "DELETE FROM user_profiles WHERE uid = $1 RETURNING *",
-      [uid]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "User not found" });
-    }
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("DELETE /api/users/:uid error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// -------------------------------------------------------------
-// API Endpoints
-// -------------------------------------------------------------
-
-// 1. Subjects Endpoints
-app.get("/api/subjects", async (req, res) => {
-  try {
-    const { teacherUid } = req.query;
-    if (!teacherUid) {
-      return res.status(400).json({ error: "teacherUid parameter is required" });
-    }
-    const result = await pool.query(
-      `SELECT id, name, teacher_uid AS "teacherUid", created_at AS "createdAt" 
-       FROM subjects 
-       WHERE teacher_uid = $1 
-       ORDER BY created_at DESC`,
-      [teacherUid]
-    );
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("GET /api/subjects error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/subjects", async (req, res) => {
-  try {
-    const { name, teacherUid } = req.body;
-    if (!name || !teacherUid) {
-      return res.status(400).json({ error: "name and teacherUid are required" });
-    }
-    const id = "sub_" + Math.random().toString(36).substring(2, 11);
-    const createdAt = new Date().toISOString();
-    await pool.query(
-      `INSERT INTO subjects (id, name, teacher_uid, created_at) 
-       VALUES ($1, $2, $3, $4)`,
-      [id, name, teacherUid, createdAt]
-    );
-    res.status(201).json({ id, name, teacherUid, createdAt });
-  } catch (err: any) {
-    console.error("POST /api/subjects error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete("/api/subjects/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    await pool.query("DELETE FROM subjects WHERE id = $1", [id]);
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error("DELETE /api/subjects error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 2. Sessions Endpoints
-app.get("/api/sessions", async (req, res) => {
-  try {
-    const { teacherUid } = req.query;
-    let queryStr = `
-      SELECT id, subject_name AS "subjectName", duration, latitude, longitude, radius, active, 
-             created_at AS "createdAt", expires_at AS "expiresAt", teacher_uid AS "teacherUid", 
-             teacher_name AS "teacherName", teacher_email AS "teacherEmail" 
-      FROM class_sessions
-    `;
-    const params = [];
-    if (teacherUid) {
-      queryStr += " WHERE teacher_uid = $1";
-      params.push(teacherUid);
-    }
-    queryStr += " ORDER BY created_at DESC";
-    
-    const result = await pool.query(queryStr, params);
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("GET /api/sessions error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get("/api/sessions/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      `SELECT id, subject_name AS "subjectName", duration, latitude, longitude, radius, active, 
-              created_at AS "createdAt", expires_at AS "expiresAt", teacher_uid AS "teacherUid", 
-              teacher_name AS "teacherName", teacher_email AS "teacherEmail" 
-       FROM class_sessions 
-       WHERE id = $1`,
-      [id]
-    );
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: "Session not found" });
-    }
-    res.json(result.rows[0]);
-  } catch (err: any) {
-    console.error("GET /api/sessions/:id error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/sessions", async (req, res) => {
-  try {
-    const { subjectName, duration, latitude, longitude, radius, teacherUid, teacherName, teacherEmail } = req.body;
-    if (!subjectName || !teacherUid) {
-      return res.status(400).json({ error: "subjectName and teacherUid are required" });
-    }
-    
-    const id = "session_" + Math.random().toString(36).substring(2, 11);
-    const createdAt = new Date().toISOString();
-    const expiresAt = new Date(Date.now() + (duration || 15) * 60 * 1000).toISOString();
-    
-    await pool.query(
-      `INSERT INTO class_sessions 
-       (id, subject_name, duration, latitude, longitude, radius, active, created_at, expires_at, teacher_uid, teacher_name, teacher_email) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
-      [
-        id, 
-        subjectName, 
-        duration || 15, 
-        latitude || 0, 
-        longitude || 0, 
-        radius || 10, 
-        true, 
-        createdAt, 
-        expiresAt, 
-        teacherUid, 
-        teacherName, 
-        teacherEmail
-      ]
-    );
-    
-    res.status(201).json({
-      id,
-      subjectName,
-      duration: duration || 15,
-      latitude: latitude || 0,
-      longitude: longitude || 0,
-      radius: radius || 10,
-      active: true,
-      createdAt,
-      expiresAt,
-      teacherUid,
-      teacherName,
-      teacherEmail
-    });
-  } catch (err: any) {
-    console.error("POST /api/sessions error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/sessions/:id/toggle", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { active } = req.body;
-    await pool.query("UPDATE class_sessions SET active = $1 WHERE id = $2", [active === true, id]);
-    res.json({ success: true, active: active === true });
-  } catch (err: any) {
-    console.error("POST /api/sessions/:id/toggle error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// 3. Attendances Endpoints
-app.get("/api/sessions/:id/attendances", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const result = await pool.query(
-      `SELECT id, session_id AS "sessionId", student_uid AS "studentUid", student_name AS "studentName", 
-              student_email AS "studentEmail", student_id AS "studentId", latitude, longitude, distance, 
-              timestamp, status 
-       FROM attendances 
-       WHERE session_id = $1 
-       ORDER BY timestamp DESC`,
-      [id]
-    );
-    res.json(result.rows);
-  } catch (err: any) {
-    console.error("GET /api/sessions/:id/attendances error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/sessions/:id/attendances", async (req, res) => {
-  try {
-    const { id: sessionId } = req.params;
-    const { studentUid, studentName, studentEmail, studentId, latitude, longitude, distance, status } = req.body;
-    
-    if (!studentUid || !studentName) {
-      return res.status(400).json({ error: "studentUid and studentName are required" });
-    }
-    
-    const id = `${studentUid}_${sessionId}`;
-    const timestamp = new Date().toISOString();
-
-    await pool.query(
-      `INSERT INTO attendances 
-       (id, session_id, student_uid, student_name, student_email, student_id, latitude, longitude, distance, timestamp, status) 
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-       ON CONFLICT (id) DO UPDATE SET 
-         latitude = EXCLUDED.latitude,
-         longitude = EXCLUDED.longitude,
-         distance = EXCLUDED.distance,
-         timestamp = EXCLUDED.timestamp,
-         status = EXCLUDED.status`,
-      [
-        id, 
-        sessionId, 
-        studentUid, 
-        studentName, 
-        studentEmail || "", 
-        studentId || "", 
-        latitude || 0, 
-        longitude || 0, 
-        distance || 0, 
-        timestamp, 
-        status || "present"
-      ]
-    );
-
-    res.status(200).json({
-      id,
-      sessionId,
-      studentUid,
-      studentName,
-      studentEmail,
-      studentId,
-      latitude,
-      longitude,
-      distance,
-      timestamp,
-      status
-    });
-  } catch (err: any) {
-    console.error("POST /api/sessions/:id/attendances error:", err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // Serve frontend assets
 async function startServer() {
