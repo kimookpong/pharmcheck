@@ -26,8 +26,16 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ credential: credentialResponse.credential }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Verification failed");
+      
+      const text = await res.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch (e) {
+        throw new Error(`Server returned non-JSON response (Status ${res.status}): ` + text.substring(0, 50));
+      }
+
+      if (!res.ok) throw new Error((data as any).error || "Verification failed");
       
       setGoogleUser(data);
       setCustomName(data.name || "");
