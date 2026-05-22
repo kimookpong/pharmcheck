@@ -23,41 +23,21 @@ import { motion, AnimatePresence } from "motion/react";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
-  const [googleUser, setGoogleUser] = useState<any>(null);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
 
-  // Resume user profile session on load and synchronize with Auth.js state
+  // Resume user profile session on load from localStorage
   useEffect(() => {
-    fetch("/api/auth/session")
-      .then(res => res.json())
-      .then(session => {
-        if (session && Object.keys(session).length > 0 && session.user) {
-          setGoogleUser(session.user);
-          const cached = localStorage.getItem("attendance_system_current_user");
-          if (cached) {
-            try {
-              const profile = JSON.parse(cached) as UserProfile;
-              if (profile.email === session.user.email) {
-                setCurrentUser(profile);
-              } else {
-                localStorage.removeItem("attendance_system_current_user");
-              }
-            } catch (e) {
-              console.warn("Cached session parse error:", e);
-            }
-          }
-        } else {
-          setGoogleUser(null);
-          setCurrentUser(null);
-          localStorage.removeItem("attendance_system_current_user");
-        }
-        setIsReady(true);
-      })
-      .catch(err => {
-        console.error("Session fetch error:", err);
-        setIsReady(true);
-      });
+    const cached = localStorage.getItem("attendance_system_current_user");
+    if (cached) {
+      try {
+        const profile = JSON.parse(cached) as UserProfile;
+        setCurrentUser(profile);
+      } catch (e) {
+        console.warn("Cached session parse error:", e);
+      }
+    }
+    setIsReady(true);
   }, []);
 
   const handleLogin = (user: UserProfile) => {
@@ -65,11 +45,10 @@ export default function App() {
     localStorage.setItem("attendance_system_current_user", JSON.stringify(user));
   };
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
     localStorage.removeItem("attendance_system_current_user");
     setCurrentUser(null);
-    setGoogleUser(null);
-    window.location.href = "/api/auth/signout";
+    setIsMenuOpen(false);
   };
 
 

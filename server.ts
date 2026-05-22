@@ -3,11 +3,11 @@ import express from "express";
 import path from "path";
 import { createServer as createViteServer } from "vite";
 import pg from "pg";
-import { ExpressAuth } from "@auth/express";
-import Google from "@auth/express/providers/google";
-import PostgresAdapter from "@auth/pg-adapter";
+import { OAuth2Client } from "google-auth-library";
 
 const { Pool } = pg;
+const clientId = process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
+const oauthClient = new OAuth2Client(clientId);
 
 const app = express();
 app.use(express.json());
@@ -147,22 +147,32 @@ async function initializeDb() {
 initializeDb();
 
 // -------------------------------------------------------------
-// Auth.js Middleware Setup
+// Authentication Endpoint
 // -------------------------------------------------------------
-app.set('trust proxy', true);
-app.use(express.urlencoded({ extended: true }));
-app.use("/api/auth", ExpressAuth({
-  basePath: "/api/auth",
-  providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID || "MOCK_CLIENT_ID_FOR_BUILD",
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET || "MOCK_CLIENT_SECRET_FOR_BUILD",
-    })
-  ],
-  adapter: PostgresAdapter(pool),
-  trustHost: true,
-  secret: process.env.AUTH_SECRET || "fallback_secret_for_local_development_only_12345",
-}));
+app.post("/api/auth/verify", async (req, res) => {
+  try {
+    const { credential } = req.body;
+    if (!credential) {
+      return res.status(400).json({ error: "No credential provided" });
+    }
+    const ticket = await oauthClient.verifyIdToken({
+      idToken: credential,
+      audience: clientId,
+    });
+    const payload = ticket.getPayload();
+    if (!payload) throw new Error("Invalid token payload");
+    
+    res.json({
+      name: payload.name,
+      email: payload.email,
+      picture: payload.picture,
+      sub: payload.sub
+    });
+  } catch (error: any) {
+    console.error("Token verification failed:", error);
+    res.status(401).json({ error: "Unauthorized" });
+  }
+});
 
 // -------------------------------------------------------------
 // API Endpoints for PharmCheck Smart QR & Geo Radar System

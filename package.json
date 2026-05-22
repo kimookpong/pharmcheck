@@ -11,14 +11,13 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
-    "@auth/core": "^0.41.2",
-    "@auth/express": "^0.12.2",
-    "@auth/pg-adapter": "^1.11.2",
     "@google/genai": "^1.29.0",
+    "@react-oauth/google": "^0.13.5",
     "@tailwindcss/vite": "^4.1.14",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
+    "google-auth-library": "^10.6.2",
     "leaflet": "^1.9.4",
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",

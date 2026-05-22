@@ -1,37 +1,44 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { UserProfile, UserRole } from "../types";
-import { LogIn, Sparkles, ShieldAlert, CheckCircle } from "lucide-react";
+import { LogIn, Sparkles, ShieldAlert, CheckCircle, RefreshCw } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
+import { GoogleLogin } from "@react-oauth/google";
 
 interface AuthLayoutProps {
   onLogin: (user: UserProfile) => void;
-  googleUser?: any;
 }
 
-export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin, googleUser }) => {
+export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>("student");
   const [customName, setCustomName] = useState<string>("");
   const [customStudentId, setCustomStudentId] = useState<string>("");
   const [customEmail, setCustomEmail] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
-  const [csrfToken, setCsrfToken] = useState<string>("");
+  const [googleUser, setGoogleUser] = useState<any>(null);
+  const [isVerifying, setIsVerifying] = useState<boolean>(false);
 
-  useEffect(() => {
-    // Fetch CSRF token for Auth.js POST requests
-    fetch("/api/auth/csrf")
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.csrfToken) {
-          setCsrfToken(data.csrfToken);
-        }
-      })
-      .catch(err => console.error("Failed to fetch CSRF token", err));
+  const handleGoogleSuccess = async (credentialResponse: any) => {
+    try {
+      setIsVerifying(true);
+      setErrorMsg(null);
+      const res = await fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credential: credentialResponse.credential }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Verification failed");
       
-    if (googleUser) {
-      setCustomName(googleUser.name || "");
-      setCustomEmail(googleUser.email || "");
+      setGoogleUser(data);
+      setCustomName(data.name || "");
+      setCustomEmail(data.email || "");
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "การเข้าสู่ระบบผ่าน Google ล้มเหลว");
+    } finally {
+      setIsVerifying(false);
     }
-  }, [googleUser]);
+  };
 
   const handleGoogleSetupSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -191,17 +198,21 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin, googleUser }) =
           )}
 
           {/* Live Google Auth Sync */}
-          <div className="space-y-3 pb-4 font-sans">
-            <form action="/api/auth/signin/google" method="POST">
-              <input type="hidden" name="csrfToken" value={csrfToken} />
-              <button
-                type="submit"
-                className="w-full bg-[#12b19d] hover:bg-[#0fa18e] text-white rounded-2xl py-3 px-4 flex items-center justify-center gap-2.5 shadow-md font-bold text-xs transition transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
-              >
-                <Sparkles className="w-4 h-4 text-emerald-300 shrink-0 animate-pulse" />
-                <span>ลงชื่อเข้าใช้งานด้วย Google Account</span>
-              </button>
-            </form>
+          <div className="space-y-3 pb-4 font-sans flex justify-center">
+            {isVerifying ? (
+              <div className="w-full bg-slate-100 text-slate-500 rounded-2xl py-3 px-4 flex items-center justify-center gap-2.5 font-bold text-xs">
+                <RefreshCw className="w-4 h-4 animate-spin" />
+                <span>กำลังตรวจสอบข้อมูล...</span>
+              </div>
+            ) : (
+              <GoogleLogin
+                onSuccess={handleGoogleSuccess}
+                onError={() => setErrorMsg("การเข้าสู่ระบบผ่าน Google ล้มเหลว")}
+                shape="pill"
+                width="100%"
+                locale="th"
+              />
+            )}
           </div>
 
           {/* Location security info note */}
