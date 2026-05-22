@@ -143,27 +143,6 @@ export const StudentView: React.FC<StudentViewProps> = ({ student, onLogout, dbR
     }
   };
 
-  // Real-time position tracking update on PostgreSQL server for checked-in students
-  useEffect(() => {
-    if (!activeSession || distance === null || !alreadyCheckedIn) return;
-
-    const timeoutId = setTimeout(async () => {
-      try {
-        await AttendanceService.submitCheckIn(
-          dbRef,
-          activeSession.id,
-          student,
-          { latitude, longitude },
-          distance,
-          "present"
-        );
-      } catch (err) {
-        console.error("Failed to sync background location:", err);
-      }
-    }, 1500); // 1.5s debounce to keep Neon PG updates efficient and high-performance
-
-    return () => clearTimeout(timeoutId);
-  }, [latitude, longitude, distance, activeSession, alreadyCheckedIn, student, dbRef]);
 
   // Quick helper to move student coordinates right to class central location to play inside mock easily
   const handleTeleportToClassInOneClick = () => {
