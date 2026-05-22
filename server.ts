@@ -142,8 +142,10 @@ async function initializeDb() {
   }
 }
 
-// Invoke DB schema setup
-initializeDb();
+// Invoke DB schema setup only if not on Vercel to prevent Lambda freezing issues
+if (!process.env.VERCEL) {
+  initializeDb();
+}
 
 // -------------------------------------------------------------
 // Authentication Endpoint
