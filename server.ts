@@ -2,11 +2,8 @@ import "dotenv/config";
 import express from "express";
 import path from "path";
 import pg from "pg";
-import { OAuth2Client } from "google-auth-library";
 
 const { Pool } = pg;
-const clientId = process.env.VITE_GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID;
-const oauthClient = new OAuth2Client(clientId);
 
 const app = express();
 app.use(express.json());
@@ -91,7 +88,19 @@ async function initializeDb() {
       );
     `);
 
-    // Create Auth.js tables
+    // Create user_profiles table
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS user_profiles (
+        uid VARCHAR(100) PRIMARY KEY,
+        email VARCHAR(255) UNIQUE NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        role VARCHAR(20) NOT NULL,
+        student_id VARCHAR(100),
+        created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
+      );
+    `);
+
+    // Create Auth.js tables (Legacy - keeping for safety but no longer used)
     await client.query(`
       CREATE TABLE IF NOT EXISTS verification_token (
         identifier TEXT NOT NULL,
@@ -148,35 +157,70 @@ if (!process.env.VERCEL) {
 }
 
 // -------------------------------------------------------------
-// Authentication Endpoint
+// User Profiles API Endpoints
 // -------------------------------------------------------------
-app.post("/api/auth/verify", async (req, res) => {
+
+// Get user profile
+app.get("/api/users/:uid", async (req, res) => {
   try {
-    const { credential } = req.body;
-    if (!credential) {
-      return res.status(400).json({ error: "No credential provided" });
+    const { uid } = req.params;
+    const result = await pool.query(
+      "SELECT uid, email, name, role, student_id FROM user_profiles WHERE uid = $1",
+      [uid]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
     }
-    const ticket = await oauthClient.verifyIdToken({
-      idToken: credential,
-      audience: clientId,
-    });
-    const payload = ticket.getPayload();
-    if (!payload) throw new Error("Invalid token payload");
-    
-    res.json({
-      name: payload.name,
-      email: payload.email,
-      picture: payload.picture,
-      sub: payload.sub
-    });
-  } catch (error: any) {
-    console.error("Token verification failed:", error);
-    res.status(401).json({ error: "Unauthorized" });
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    console.error("GET /api/users/:uid error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Create or update user profile
+app.post("/api/users", async (req, res) => {
+  try {
+    const { uid, email, name, role, student_id } = req.body;
+    if (!uid || !email || !name || !role) {
+      return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO user_profiles (uid, email, name, role, student_id)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (uid) 
+       DO UPDATE SET name = $3, role = $4, student_id = $5
+       RETURNING *`,
+      [uid, email, name, role, student_id || null]
+    );
+    res.json(result.rows[0]);
+  } catch (err: any) {
+    console.error("POST /api/users error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Delete user profile
+app.delete("/api/users/:uid", async (req, res) => {
+  try {
+    const { uid } = req.params;
+    const result = await pool.query(
+      "DELETE FROM user_profiles WHERE uid = $1 RETURNING *",
+      [uid]
+    );
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: "User not found" });
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    console.error("DELETE /api/users/:uid error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 
 // -------------------------------------------------------------
-// API Endpoints for PharmCheck Smart QR & Geo Radar System
+// API Endpoints
 // -------------------------------------------------------------
 
 // 1. Subjects Endpoints

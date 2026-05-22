@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { UserProfile, UserRole } from "../types";
 import { LogIn, Sparkles, ShieldAlert, CheckCircle, RefreshCw } from "lucide-react";
 import { BrandLogo } from "./BrandLogo";
-import { GoogleLogin } from "@react-oauth/google";
+import { authClient } from "../lib/auth";
 
 interface AuthLayoutProps {
   onLogin: (user: UserProfile) => void;
@@ -17,57 +17,93 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
   const [googleUser, setGoogleUser] = useState<any>(null);
   const [isVerifying, setIsVerifying] = useState<boolean>(false);
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
+  React.useEffect(() => {
+    // When returning from Google OAuth, check if we have a session
+    const checkSession = async () => {
+      try {
+        const { data } = await authClient.getSession();
+        if (data?.user) {
+          // Check if profile exists in our database
+          const res = await fetch(`/api/users/${data.user.id}`);
+          if (res.ok) {
+            const profile = await res.json();
+            // Automatically log in
+            onLogin({
+              uid: profile.uid,
+              name: profile.name,
+              email: profile.email,
+              role: profile.role,
+              studentId: profile.student_id || undefined,
+              photoURL: data.user.image || data.user.image || undefined,
+            });
+            return;
+          }
+          
+          // Otherwise show setup form
+          setGoogleUser(data.user);
+          setCustomName(data.user.name || "");
+          setCustomEmail(data.user.email || "");
+        }
+      } catch (e) {
+        console.error("Session check failed", e);
+      }
+    };
+    checkSession();
+  }, []);
+
+  const handleGoogleLogin = async () => {
     try {
       setIsVerifying(true);
       setErrorMsg(null);
-      const res = await fetch("/api/auth/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ credential: credentialResponse.credential }),
-      });
-      
-      const text = await res.text();
-      let data: any = {};
-      try {
-        data = text ? JSON.parse(text) : {};
-      } catch (e) {
-        throw new Error(`Server returned non-JSON (Status ${res.status}): ` + text.substring(0, 50));
-      }
-
-      if (!res.ok) {
-        const errorDetail = data.error ? (typeof data.error === 'string' ? data.error : JSON.stringify(data.error)) : JSON.stringify(data);
-        throw new Error(`Status ${res.status}: ${errorDetail || "Verification failed"}`);
-      }
-      
-      setGoogleUser(data);
-      setCustomName(data.name || "");
-      setCustomEmail(data.email || "");
+      await authClient.signIn.social({ provider: "google", callbackURL: window.location.origin });
     } catch (err: any) {
       console.error(err);
       setErrorMsg(err.message || "การเข้าสู่ระบบผ่าน Google ล้มเหลว");
-    } finally {
       setIsVerifying(false);
     }
   };
 
-  const handleGoogleSetupSubmit = (e: React.FormEvent) => {
+  const handleGoogleSetupSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg(null);
     if (!googleUser) return;
     if (!customName.trim() || !customEmail.trim()) return;
     if (selectedRole === "student" && !customStudentId.trim()) return;
 
-    const googleProfile: UserProfile = {
-      uid: googleUser?.id || googleUser?.email || "user_" + Math.random().toString(36).substring(2, 11),
-      name: customName,
-      email: customEmail,
-      role: selectedRole,
-      photoURL: googleUser.photoURL || undefined,
-      ...(selectedRole === "student" && { studentId: customStudentId })
-    };
+    try {
+      setIsVerifying(true);
+      const uid = googleUser.id || "user_" + Math.random().toString(36).substring(2, 11);
+      
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          uid,
+          email: customEmail,
+          name: customName,
+          role: selectedRole,
+          student_id: selectedRole === "student" ? customStudentId : null
+        })
+      });
 
-    onLogin(googleProfile);
+      if (!res.ok) throw new Error("Failed to save user profile");
+
+      const googleProfile: UserProfile = {
+        uid,
+        name: customName,
+        email: customEmail,
+        role: selectedRole,
+        photoURL: googleUser.image || undefined,
+        ...(selectedRole === "student" && { studentId: customStudentId })
+      };
+
+      onLogin(googleProfile);
+    } catch (err: any) {
+      console.error(err);
+      setErrorMsg(err.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล");
+    } finally {
+      setIsVerifying(false);
+    }
   };
 
   if (googleUser) {
@@ -162,8 +198,9 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
             
             <button
               type="button"
-              onClick={() => {
-                window.location.href = "/api/auth/signout";
+              onClick={async () => {
+                await authClient.signOut();
+                setGoogleUser(null);
               }}
               className="w-full bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl py-2 flex items-center justify-center gap-2 text-xs transition cursor-pointer"
             >
@@ -216,12 +253,14 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
                 <span>กำลังตรวจสอบข้อมูล...</span>
               </div>
             ) : (
-              <GoogleLogin
-                onSuccess={handleGoogleSuccess}
-                onError={() => setErrorMsg("การเข้าสู่ระบบผ่าน Google ล้มเหลว")}
-                shape="pill"
-                width="100%"
-              />
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                className="w-full bg-[#12b19d] hover:bg-[#0fa18e] text-white rounded-2xl py-3 px-4 flex items-center justify-center gap-2.5 shadow-md font-bold text-xs transition transform hover:scale-[1.01] active:scale-[0.99] cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4 text-emerald-300 shrink-0 animate-pulse" />
+                <span>ลงชื่อเข้าใช้งานด้วย Google Account</span>
+              </button>
             )}
           </div>
 

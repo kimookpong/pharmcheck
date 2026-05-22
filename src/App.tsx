@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
 import { motion, AnimatePresence } from "motion/react";
+import { authClient } from "./lib/auth";
 
 export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
@@ -45,10 +46,28 @@ export default function App() {
     localStorage.setItem("attendance_system_current_user", JSON.stringify(user));
   };
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await authClient.signOut();
+    } catch (err) {
+      console.error("Sign out error", err);
+    }
     localStorage.removeItem("attendance_system_current_user");
     setCurrentUser(null);
     setIsMenuOpen(false);
+  };
+
+  const handleResetAccount = async () => {
+    if (!currentUser) return;
+    
+    if (confirm("คุณแน่ใจหรือไม่ว่าต้องการลบข้อมูลสิทธิ์การเข้าใช้งาน? คุณจะต้องเลือกว่าเป็นอาจารย์หรือนักศึกษาใหม่ในการเข้าสู่ระบบครั้งถัดไป")) {
+      try {
+        await fetch(`/api/users/${currentUser.uid}`, { method: "DELETE" });
+      } catch (err) {
+        console.error("Failed to delete user profile", err);
+      }
+      handleLogout();
+    }
   };
 
 
@@ -198,6 +217,18 @@ export default function App() {
                       {/* Menu navigation options */}
                       <div className="p-2 space-y-0.5">
 
+
+                        {/* Reset Account Action */}
+                        <button
+                          onClick={() => {
+                            setIsMenuOpen(false);
+                            handleResetAccount();
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-amber-600 hover:bg-amber-50/70 rounded-xl flex items-center gap-2.5 transition cursor-pointer mb-1"
+                        >
+                          <RefreshCw className="w-4 h-4 text-amber-500" />
+                          <span>ลบข้อมูลและเริ่มใหม่ (Reset Account)</span>
+                        </button>
 
                         {/* Logout menu action */}
                         <button
