@@ -1,0 +1,265 @@
+import React, { useState, useEffect } from "react";
+import { UserProfile } from "./types";
+import { LocationProvider } from "./components/LocationContext";
+import { AuthLayout } from "./components/AuthLayout";
+import { TeacherDashboard } from "./components/TeacherDashboard";
+import { StudentView } from "./components/StudentView";
+
+import { 
+  GraduationCap, 
+  Sparkles, 
+  RefreshCw, 
+  Layers,
+  User,
+  LogOut,
+  ChevronDown,
+  Database,
+  CheckCircle2,
+  Lock,
+  Compass
+} from "lucide-react";
+import { BrandLogo } from "./components/BrandLogo";
+import { motion, AnimatePresence } from "motion/react";
+
+export default function App() {
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  const [googleUser, setGoogleUser] = useState<any>(null);
+  const [isReady, setIsReady] = useState<boolean>(false);
+  const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+
+  // Resume user profile session on load and synchronize with Auth.js state
+  useEffect(() => {
+    fetch("/api/auth/session")
+      .then(res => res.json())
+      .then(session => {
+        if (session && Object.keys(session).length > 0 && session.user) {
+          setGoogleUser(session.user);
+          const cached = localStorage.getItem("attendance_system_current_user");
+          if (cached) {
+            try {
+              const profile = JSON.parse(cached) as UserProfile;
+              if (profile.email === session.user.email) {
+                setCurrentUser(profile);
+              } else {
+                localStorage.removeItem("attendance_system_current_user");
+              }
+            } catch (e) {
+              console.warn("Cached session parse error:", e);
+            }
+          }
+        } else {
+          setGoogleUser(null);
+          setCurrentUser(null);
+          localStorage.removeItem("attendance_system_current_user");
+        }
+        setIsReady(true);
+      })
+      .catch(err => {
+        console.error("Session fetch error:", err);
+        setIsReady(true);
+      });
+  }, []);
+
+  const handleLogin = (user: UserProfile) => {
+    setCurrentUser(user);
+    localStorage.setItem("attendance_system_current_user", JSON.stringify(user));
+  };
+
+  const handleLogout = async () => {
+    localStorage.removeItem("attendance_system_current_user");
+    setCurrentUser(null);
+    setGoogleUser(null);
+    window.location.href = "/api/auth/signout";
+  };
+
+
+
+  // Remove safe wrapper as Firebase is removed
+  const getDbRef = () => {
+    return null;
+  };
+
+  if (!isReady) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-slate-50 font-sans">
+        <div className="text-center space-y-3">
+          <RefreshCw className="w-8 h-8 text-[#12b19d] animate-spin mx-auto" />
+          <p className="text-xs font-semibold text-slate-500">กำลังเตรียมความพร้อมของระบบ...</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <LocationProvider>
+      <div className="min-h-screen bg-slate-50 pb-20 font-sans text-slate-900 transition-colors duration-200">
+        
+        {/* Main top structural application bar */}
+        <header className="border-b border-slate-200/65 bg-white/95 backdrop-blur shadow-sm sticky top-0 z-40">
+          <div className="max-w-7xl mx-auto px-4 md:px-6 py-3 flex items-center justify-between">
+            <BrandLogo size="sm" />
+
+            {currentUser && (
+              <div className="relative">
+                {/* Backdrop overlay for dropdown close click */}
+                {isMenuOpen && (
+                  <div 
+                    className="fixed inset-0 z-30 cursor-default" 
+                    onClick={() => setIsMenuOpen(false)}
+                  />
+                )}
+
+                <div className="flex items-center gap-3">
+                  <span className="text-[9px] bg-teal-50 text-[#12b19d] border border-teal-200/50 font-mono font-black px-2 py-0.5 rounded-md uppercase hidden md:flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-[#12b19d] rounded-full animate-ping" />
+                    NEON ACTIVE
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsMenuOpen(!isMenuOpen)}
+                    className="flex items-center gap-2 p-1.5 rounded-2xl hover:bg-slate-50 border border-slate-200/80 bg-slate-50/50 transition duration-200 select-none cursor-pointer focus:outline-hidden relative z-40 active:scale-98"
+                    id="avatar-menu-button"
+                  >
+                    {currentUser.photoURL ? (
+                      <div className="relative shrink-0">
+                        <img 
+                          src={currentUser.photoURL} 
+                          alt={currentUser.name}
+                          referrerPolicy="no-referrer"
+                          className="w-8 h-8 rounded-xl object-cover shadow-xs border border-slate-200/80 bg-slate-100"
+                        />
+                        <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                      </div>
+                    ) : (
+                      <div className={`w-8 h-8 rounded-xl font-bold text-xs flex items-center justify-center text-white relative shadow-sm shrink-0 uppercase bg-gradient-to-tr ${
+                        currentUser.role === "teacher" 
+                          ? "from-[#12b19d] to-teal-400" 
+                          : "from-emerald-500 to-teal-400"
+                      }`}>
+                        {currentUser.name.substring(0, 1).toUpperCase()}
+                        <span className="absolute -bottom-0.5 -right-0.5 block h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+                      </div>
+                    )}
+                    
+                    <div className="hidden sm:flex flex-col text-left max-w-[124px]">
+                      <span className="text-xs font-bold text-slate-800 truncate leading-none mb-0.5">
+                        {currentUser.name.split(" ")[0]}
+                      </span>
+                      <span className="text-[8.5px] font-bold text-slate-400 uppercase tracking-wider leading-none">
+                        {currentUser.role === "teacher" ? "อาจารย์" : "นักศึกษา"}
+                      </span>
+                    </div>
+
+                    <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 shrink-0 ${isMenuOpen ? "rotate-180" : ""}`} />
+                  </button>
+                </div>
+
+                <AnimatePresence>
+                  {isMenuOpen && (
+                    <motion.div
+                      initial={{ opacity: 0, y: 12, scale: 0.96 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: 12, scale: 0.96 }}
+                      transition={{ duration: 0.15, ease: "easeOut" }}
+                      className="absolute right-0 mt-2 w-76 bg-white border border-slate-200/80 rounded-2xl shadow-xl z-40 overflow-hidden text-left"
+                      id="avatar-dropdown-menu"
+                    >
+                      {/* Profile details preview inside dropdown header */}
+                      <div className="p-4 bg-slate-50/80 border-b border-slate-100 flex items-start gap-3">
+                        {currentUser.photoURL ? (
+                          <img 
+                            src={currentUser.photoURL} 
+                            alt={currentUser.name}
+                            referrerPolicy="no-referrer"
+                            className="w-11 h-11 rounded-xl object-cover shadow-sm border border-slate-200 bg-slate-100 shrink-0"
+                          />
+                        ) : (
+                          <div className={`w-11 h-11 rounded-xl font-black text-sm flex items-center justify-center text-white relative shadow-sm uppercase bg-gradient-to-tr shrink-0 ${
+                            currentUser.role === "teacher" 
+                              ? "from-[#12b19d] to-teal-400" 
+                              : "from-emerald-500 to-teal-400"
+                          }`}>
+                            {currentUser.name.substring(0, 1).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="space-y-1 overflow-hidden">
+                          <h4 className="font-extrabold text-slate-800 text-xs truncate leading-tight">{currentUser.name}</h4>
+                          <p className="text-[10px] text-slate-400 truncate mt-0.5">{currentUser.email}</p>
+                          
+                          {currentUser.studentId && (
+                            <p className="text-[10px] text-[#12b19d] font-mono font-bold">
+                              รหัส: {currentUser.studentId}
+                            </p>
+                          )}
+
+                          <div className="pt-0.5">
+                            <span className={`inline-flex px-2 py-0.5 rounded-full text-[8.5px] font-bold tracking-wide uppercase border ${
+                              currentUser.role === "teacher"
+                                ? "bg-brand-50 text-[#12b19d] border-brand-100"
+                                : "bg-emerald-50 text-emerald-600 border-emerald-100"
+                            }`}>
+                              {currentUser.role === "teacher" ? "อาจารย์ผู้สอน" : "นักศึกษา"}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Neon Database status panel */}
+                      <div className="p-3 bg-[#12b19d]/5 border-b border-slate-100 text-slate-700 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <Database className="w-3.5 h-3.5 text-[#12b19d]" />
+                          <span className="text-[10px] font-bold text-slate-800">Neon PostgreSQL Cloud</span>
+                        </div>
+                        <p className="text-[9.2px] text-slate-500 leading-normal pl-5 font-medium">
+                          ระบบเช็คชื่อด้วยพิกัดตำแหน่งภูมิศาสตร์ 10 เมตร ทำงานผ่านฐานข้อมูลเซิร์ฟเวอร์แบบ Real-time API
+                        </p>
+                      </div>
+
+                      {/* Menu navigation options */}
+                      <div className="p-2 space-y-0.5">
+
+
+                        {/* Logout menu action */}
+                        <button
+                          onClick={() => {
+                            setIsMenuOpen(false);
+                            handleLogout();
+                          }}
+                          className="w-full text-left px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50/70 rounded-xl flex items-center gap-2.5 transition cursor-pointer"
+                        >
+                          <LogOut className="w-4 h-4 text-rose-500" />
+                          <span>ออกจากระบบ</span>
+                        </button>
+                      </div>
+
+                      {/* Version identifier in dropdown footer */}
+                      <div className="px-4 py-2 bg-slate-50/90 border-t border-slate-100 text-center select-none">
+                        <span className="text-[8px] font-mono text-slate-400 font-bold tracking-wide">
+                          PharmCheck v1.2.5 • NeonDB Pooler
+                        </span>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
+          </div>
+        </header>
+
+        {/* Core Screen Routing */}
+        <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 min-h-[75vh]">
+          {!currentUser ? (
+            <AuthLayout onLogin={handleLogin} googleUser={googleUser} />
+          ) : currentUser.role === "teacher" ? (
+            <TeacherDashboard teacher={currentUser} onLogout={handleLogout} dbRef={getDbRef()} />
+          ) : (
+            <StudentView student={currentUser} onLogout={handleLogout} dbRef={getDbRef()} />
+          )}
+        </main>
+
+
+      </div>
+    </LocationProvider>
+  );
+}

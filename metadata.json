@@ -1,0 +1,10 @@
+{
+  "name": "ระบบเช็คชื่อผู้เข้าเรียน",
+  "description": "ระบบเช็คชื่อนักศึกษาด้วยตำแหน่งพิกัดจริงแบบเรียลไทม์ (Location-based Dynamic Student Attendance System)",
+  "requestFramePermissions": [
+    "geolocation"
+  ],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
