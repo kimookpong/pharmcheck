@@ -210,7 +210,6 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
                 onError={() => setErrorMsg("การเข้าสู่ระบบผ่าน Google ล้มเหลว")}
                 shape="pill"
                 width="100%"
-                locale="th"
               />
             )}
           </div>

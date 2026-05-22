@@ -229,7 +229,7 @@ export default function App() {
         {/* Core Screen Routing */}
         <main className="max-w-7xl mx-auto px-4 md:px-6 py-6 min-h-[75vh]">
           {!currentUser ? (
-            <AuthLayout onLogin={handleLogin} googleUser={googleUser} />
+            <AuthLayout onLogin={handleLogin} />
           ) : currentUser.role === "teacher" ? (
             <TeacherDashboard teacher={currentUser} onLogout={handleLogout} dbRef={getDbRef()} />
           ) : (
