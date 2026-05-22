@@ -1,7 +1,6 @@
 import "dotenv/config";
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import pg from "pg";
 import { OAuth2Client } from "google-auth-library";
 
@@ -418,6 +417,7 @@ app.post("/api/sessions/:id/attendances", async (req, res) => {
 // Serve frontend assets
 async function startServer() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
