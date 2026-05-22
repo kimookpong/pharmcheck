@@ -46,6 +46,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
   
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSession, setActiveSession] = useState<Session | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
   const [viewingSession, setViewingSession] = useState<Session | null>(null);
   const [attendances, setAttendances] = useState<Attendance[]>([]);
   const [mapMode, setMapMode] = useState<"map" | "radar">("map");
@@ -60,6 +61,8 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
   const [duration, setDuration] = useState<number>(15); // minutes
   const [creating, setCreating] = useState<boolean>(false);
   const [timeRemaining, setTimeRemaining] = useState<string>("");
+  const [showMap, setShowMap] = useState<boolean>(false);
+  const [showSubjectManager, setShowSubjectManager] = useState<boolean>(false);
 
   // Subjects Management
   const [subjects, setSubjects] = useState<{ id: string; name: string; teacherUid: string }[]>([]);
@@ -80,26 +83,29 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
   const strokeDashoffsetPresent = circumference - (circumference * presentPercentage) / 100;
   const strokeDashoffsetLate = circumference - (circumference * latePercentage) / 100;
 
-  // Listen to subjects
+  // Listen to subjects (Fetch once per refresh trigger, no need to poll continuously)
   useEffect(() => {
     const unsubscribe = AttendanceService.listenToSubjects(dbRef, teacher.uid, (fetched) => {
       setSubjects(fetched);
-    });
+    }, 0); // pollInterval = 0 to disable polling
     return () => unsubscribe();
-  }, [dbRef, teacher.uid]);
+  }, [dbRef, teacher.uid, refreshTrigger]);
 
   const handleDeleteSubject = async (e: React.MouseEvent, subjectId: string) => {
     e.stopPropagation();
     if (!window.confirm("คุณต้องการลบรายวิชานี้ใช่หรือไม่?")) return;
     try {
       await AttendanceService.deleteSubject(dbRef, subjectId);
+      setRefreshTrigger(prev => prev + 1); // Trigger refetch
     } catch (err) {
       console.error("Error deleting subject:", err);
     }
   };
 
-  // Listen to all sessions
+  // Listen to all sessions. If no active session, do NOT poll continuously to save API calls.
+  // When active session exists, we poll every 3s to keep data live.
   useEffect(() => {
+    const shouldPoll = activeSession ? 3000 : 0;
     const unsubscribe = AttendanceService.listenToSessions(dbRef, (fetched) => {
       setSessions(fetched);
       
@@ -107,10 +113,10 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
       // Criteria: active flag == true and expiry time is in the future
       const active = fetched.find(s => s.active && new Date(s.expiresAt).getTime() > Date.now());
       setActiveSession(active || null);
-    });
+    }, shouldPoll);
 
     return () => unsubscribe();
-  }, [dbRef]);
+  }, [dbRef, activeSession ? true : false, refreshTrigger]);
 
   // Listen to attendees if there is an active or viewed session
   useEffect(() => {
@@ -169,6 +175,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
         teacher
       );
       setSubjectName("");
+      setRefreshTrigger(prev => prev + 1); // Trigger refetch to get the newly created session immediately
     } catch (err) {
       console.error(err);
     } finally {
@@ -180,6 +187,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
     if (!activeSession) return;
     const nextState = !activeSession.active;
     await AttendanceService.toggleSessionActive(dbRef, activeSession.id, nextState);
+    setRefreshTrigger(prev => prev + 1); // Trigger refetch
   };
 
   const loadPastSessionDetails = async (session: Session) => {
@@ -239,18 +247,39 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
           {/* Create Session Form Card */}
           {!currentSession ? (
             <div id="create-room-heading" className="bg-white border border-slate-200 rounded-3xl p-5 shadow-sm space-y-4">
-              <div className="border-b border-slate-100 pb-3">
-                <h4 className="font-bold text-slate-800 flex items-center gap-2">
-                  <Plus className="w-5 h-5 text-indigo-600" />
-                  <span>จัดการรายวิชาและเปิดบันทึก</span>
-                </h4>
-                <p className="text-[11px] text-slate-450 mt-1">
-                  เลือกจากรายวิชาที่เพิ่มไว้ หรือเพิ่มวิชาใหม่ เพื่อเริ่มเปิดจุดเช็คชื่อพิกัดได้หลายครั้ง
-                </p>
+              <div className="flex justify-between items-start sm:items-center border-b border-slate-100 pb-3 gap-4">
+                <div>
+                  <h4 className="font-bold text-slate-800 flex items-center gap-2">
+                    <Plus className="w-5 h-5 text-indigo-600" />
+                    <span>เปิดจุดเช็คชื่อพิกัดใหม่</span>
+                  </h4>
+                  <p className="text-[11px] text-slate-450 mt-1">
+                    เลือกวิชาและระบุระยะเวลาเพื่อให้นักศึกษาลงชื่อเข้าเรียน
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowSubjectManager(!showSubjectManager)}
+                  className={`text-[10px] font-semibold px-2.5 py-1.5 rounded-lg transition whitespace-nowrap border shrink-0 ${
+                    showSubjectManager 
+                      ? "text-slate-600 bg-slate-100 hover:bg-slate-200 border-slate-200" 
+                      : "text-indigo-600 bg-indigo-50 hover:bg-indigo-100 border-indigo-100"
+                  }`}
+                >
+                  {showSubjectManager ? "ปิดหน้าต่าง" : "⚙️ จัดการรายวิชา"}
+                </button>
               </div>
 
               {/* My Subject List (จัดการรายวิชา) */}
-              <div className="space-y-2">
+              <AnimatePresence>
+                {showSubjectManager && (
+                  <motion.div
+                    initial={{ opacity: 0, height: 0 }}
+                    animate={{ opacity: 1, height: "auto" }}
+                    exit={{ opacity: 0, height: 0 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="space-y-3 bg-slate-50/50 p-4 rounded-2xl border border-slate-150 mb-4">
                 <div className="flex items-center justify-between">
                   <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1">
                     <span>📚 รายวิชาของคุณที่ประคบประคองไว้ ({subjects.length})</span>
@@ -347,16 +376,18 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
                       if (!newSubjectName.trim()) return;
                       await AttendanceService.addSubject(dbRef, newSubjectName.trim(), teacher.uid);
                       setNewSubjectName("");
+                      setRefreshTrigger(prev => prev + 1); // Trigger refetch
                     }}
                     className="bg-[#12b19d] hover:bg-[#0fa18e] disabled:opacity-50 text-white text-[11px] rounded-xl px-3.5 py-1.5 font-semibold transition flex items-center gap-1 cursor-pointer shrink-0"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>เพิ่มวิชา</span>
                   </button>
-                </div>
-              </div>
-
-              <div className="border-t border-slate-150/70 pt-3" />
+                    </div>
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
 
               <form onSubmit={handleCreateSession} className="space-y-3">
                 <div>
@@ -414,33 +445,73 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
                   />
                 </div>
 
-                {/* Leaflet Dynamic Classroom Map Selector with Draggable Pin & GPS Fetching */}
-                <div className="p-3 bg-brand-50/40 border border-brand-100/80 rounded-2xl space-y-3">
-                  <ClassroomSelectorMap 
-                    latitude={latitude}
-                    longitude={longitude}
-                    onChange={(lat, lng) => {
-                      setCoords(lat, lng);
-                      setSimulatedMode(true); // Lock coordinates when user drags specifically to prevent background jitter
-                    }}
-                    onFetchGps={async () => {
-                      setSimulatedMode(false); // Disable override to catch real satellite lock
-                      await refreshLocation();
-                    }}
-                    locLoading={locLoading}
-                  />
+                {/* Location Settings */}
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-emerald-500" />
+                      <span className="text-[11px] font-semibold text-slate-700">พิกัดเปิดรับเช็คชื่อ (รัศมี 10 เมตร)</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowMap(!showMap)}
+                      className="text-[10px] text-emerald-600 bg-emerald-50 px-2 py-1 rounded-md hover:bg-emerald-100 border border-emerald-100/50 transition font-medium"
+                    >
+                      {showMap ? "ซ่อนแผนที่" : "ปรับพิกัดด้วยตัวเอง"}
+                    </button>
+                  </div>
+                  
+                  <AnimatePresence mode="wait">
+                    {!showMap ? (
+                      <motion.div
+                        key="status-badge"
+                        initial={{ opacity: 0, y: -5 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -5 }}
+                        className="text-[10px] text-emerald-650 bg-emerald-50/50 p-2.5 rounded-xl border border-emerald-100 flex items-center gap-2"
+                      >
+                        <CheckCircle className="w-4 h-4 text-emerald-500 shrink-0" />
+                        <div>
+                          <span className="block font-semibold">ระบบพร้อมใช้งานพิกัดปัจจุบันของอาจารย์</span>
+                          <span className="block text-emerald-600/80 mt-0.5">พิกัดจะถูกล็อกทันทีที่กดปุ่มเปิดจุดเซ็คชื่อด้านล่าง</span>
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <motion.div
+                        key="interactive-map"
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="space-y-3 overflow-hidden pt-1"
+                      >
+                        <ClassroomSelectorMap 
+                          latitude={latitude}
+                          longitude={longitude}
+                          onChange={(lat, lng) => {
+                            setCoords(lat, lng);
+                            setSimulatedMode(true); // Lock coordinates when user drags specifically to prevent background jitter
+                          }}
+                          onFetchGps={async () => {
+                            setSimulatedMode(false); // Disable override to catch real satellite lock
+                            await refreshLocation();
+                          }}
+                          locLoading={locLoading}
+                        />
 
-                  {locError ? (
-                    <div className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded-xl border border-amber-100 flex items-center gap-1.5">
-                      <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
-                      <span>{locError} (สามารถกดลากพินสีส้มบนแผนที่ เพื่อระบุพิกัดห้องเรียนเองได้)</span>
-                    </div>
-                  ) : (
-                    <div className="text-[10px] text-emerald-600 bg-emerald-50/60 p-2 rounded-xl border border-emerald-100/50 flex items-center gap-1.5 font-medium leading-normal">
-                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
-                      <span>ระบบเชื่อมต่อแผนที่พร้อมใช้งาน รัศมีรอบพิน 10 เมตร ตรวจสอบความถูกต้องเรียบร้อย</span>
-                    </div>
-                  )}
+                        {locError ? (
+                          <div className="text-[10px] text-amber-600 bg-amber-50 p-2 rounded-xl border border-amber-100 flex items-center gap-1.5">
+                            <AlertTriangle className="w-3.5 h-3.5 shrink-0 text-amber-500" />
+                            <span>{locError} (สามารถกดลากพินสีส้มบนแผนที่ เพื่อระบุพิกัดห้องเรียนเองได้)</span>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-emerald-600 bg-emerald-50/60 p-2 rounded-xl border border-emerald-100/50 flex items-center gap-1.5 font-medium leading-normal">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                            <span>ระบบเชื่อมต่อแผนที่พร้อมใช้งาน รัศมีรอบพิน 10 เมตร</span>
+                          </div>
+                        )}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
 
                 <button
@@ -552,6 +623,7 @@ export const TeacherDashboard: React.FC<TeacherDashboardProps> = ({ teacher, onL
                           if (activeSession) {
                             await AttendanceService.toggleSessionActive(dbRef, activeSession.id, false);
                             setActiveSession(null);
+                            setRefreshTrigger(prev => prev + 1);
                           }
                         }}
                         className="py-2.5 px-3 bg-white/10 hover:bg-rose-500/20 border border-white/10 hover:border-rose-500/30 rounded-xl text-xs font-semibold text-slate-200 hover:text-rose-400 transition"

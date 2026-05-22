@@ -13,10 +13,13 @@ import {
   User,
   LogOut,
   ChevronDown,
-  Database,
   CheckCircle2,
   Lock,
-  Compass
+  Compass,
+  Database, 
+  MapPin, 
+  Download, 
+  X
 } from "lucide-react";
 import { BrandLogo } from "./components/BrandLogo";
 import { motion, AnimatePresence } from "motion/react";
@@ -26,6 +29,11 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [isReady, setIsReady] = useState<boolean>(false);
   const [isMenuOpen, setIsMenuOpen] = useState<boolean>(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [isEditingProfile, setIsEditingProfile] = useState<boolean>(false);
+  const [editName, setEditName] = useState<string>("");
+  const [editStudentId, setEditStudentId] = useState<string>("");
+  const [isSavingProfile, setIsSavingProfile] = useState<boolean>(false);
 
   // Resume user profile session on load from localStorage
   useEffect(() => {
@@ -40,6 +48,26 @@ export default function App() {
     }
     setIsReady(true);
   }, []);
+
+  // Handle PWA Install Prompt
+  useEffect(() => {
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+    return () => window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+  }, []);
+
+  const handleInstallApp = async () => {
+    if (deferredPrompt) {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === "accepted") {
+        setDeferredPrompt(null);
+      }
+    }
+  };
 
   const handleLogin = (user: UserProfile) => {
     setCurrentUser(user);
@@ -203,20 +231,40 @@ export default function App() {
                         </div>
                       </div>
 
-                      {/* Neon Database status panel */}
-                      <div className="p-3 bg-[#12b19d]/5 border-b border-slate-100 text-slate-700 space-y-1">
-                        <div className="flex items-center gap-1.5">
-                          <Database className="w-3.5 h-3.5 text-[#12b19d]" />
-                          <span className="text-[10px] font-bold text-slate-800">Neon PostgreSQL Cloud</span>
-                        </div>
-                        <p className="text-[9.2px] text-slate-500 leading-normal pl-5 font-medium">
-                          ระบบเช็คชื่อด้วยพิกัดตำแหน่งภูมิศาสตร์ 10 เมตร ทำงานผ่านฐานข้อมูลเซิร์ฟเวอร์แบบ Real-time API
-                        </p>
-                      </div>
+
 
                       {/* Menu navigation options */}
                       <div className="p-2 space-y-0.5">
 
+                        {/* Edit Profile Action (Student only) */}
+                        {currentUser.role === "student" && (
+                          <button
+                            onClick={() => {
+                              setIsMenuOpen(false);
+                              setEditName(currentUser.name);
+                              setEditStudentId(currentUser.studentId || "");
+                              setIsEditingProfile(true);
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-teal-600 hover:bg-teal-50/70 rounded-xl flex items-center gap-2.5 transition cursor-pointer mb-1"
+                          >
+                            <User className="w-4 h-4 text-teal-500" />
+                            <span>แก้ไขชื่อและรหัสนักศึกษา</span>
+                          </button>
+                        )}
+
+                        {/* PWA Install Action */}
+                        {deferredPrompt && (
+                          <button
+                            onClick={() => {
+                              setIsMenuOpen(false);
+                              handleInstallApp();
+                            }}
+                            className="w-full text-left px-3 py-2 text-xs font-bold text-indigo-600 hover:bg-indigo-50/70 rounded-xl flex items-center gap-2.5 transition cursor-pointer mb-1"
+                          >
+                            <Download className="w-4 h-4 text-indigo-500" />
+                            <span>ติดตั้งแอปพลิเคชันลงในเครื่อง</span>
+                          </button>
+                        )}
 
                         {/* Reset Account Action */}
                         <button
@@ -266,9 +314,76 @@ export default function App() {
           ) : (
             <StudentView student={currentUser} onLogout={handleLogout} dbRef={getDbRef()} />
           )}
+
+          {/* Edit Profile Modal */}
+          {isEditingProfile && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                className="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl"
+              >
+                <div className="flex justify-between items-center mb-4">
+                  <h3 className="font-bold text-slate-800 text-lg">แก้ไขข้อมูลส่วนตัว</h3>
+                  <button onClick={() => setIsEditingProfile(false)} className="text-slate-400 hover:text-slate-600 transition">
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">ชื่อ-นามสกุล</label>
+                    <input
+                      type="text"
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 bg-slate-50 focus:bg-white focus:border-[#12b19d] focus:outline-none transition"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-500 mb-1.5">รหัสนักศึกษา</label>
+                    <input
+                      type="text"
+                      value={editStudentId}
+                      onChange={(e) => setEditStudentId(e.target.value)}
+                      className="w-full text-sm border border-slate-200 rounded-xl px-3.5 py-2.5 bg-slate-50 focus:bg-white focus:border-[#12b19d] focus:outline-none transition font-mono"
+                    />
+                  </div>
+                  
+                  <div className="pt-2">
+                    <button
+                      onClick={async () => {
+                        if (!editName.trim() || !editStudentId.trim()) return;
+                        setIsSavingProfile(true);
+                        try {
+                          const { error } = await neonClient.from('user_profiles')
+                            .update({ name: editName.trim(), student_id: editStudentId.trim() })
+                            .eq('uid', currentUser.uid);
+                          
+                          if (error) throw new Error(error.message);
+                          
+                          const updatedUser = { ...currentUser, name: editName.trim(), studentId: editStudentId.trim() };
+                          setCurrentUser(updatedUser);
+                          localStorage.setItem("attendance_system_current_user", JSON.stringify(updatedUser));
+                          setIsEditingProfile(false);
+                        } catch (err) {
+                          console.error("Failed to update profile:", err);
+                          alert("ไม่สามารถบันทึกข้อมูลได้ กรุณาลองใหม่อีกครั้ง");
+                        } finally {
+                          setIsSavingProfile(false);
+                        }
+                      }}
+                      disabled={isSavingProfile || !editName.trim() || !editStudentId.trim()}
+                      className="w-full bg-[#12b19d] hover:bg-[#0fa18e] disabled:opacity-50 text-white font-semibold rounded-xl py-2.5 transition"
+                    >
+                      {isSavingProfile ? "กำลังบันทึก..." : "บันทึกการแก้ไข"}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            </div>
+          )}
         </main>
-
-
       </div>
     </LocationProvider>
   );

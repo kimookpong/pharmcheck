@@ -56,7 +56,7 @@ export const AttendanceService = {
   },
 
   // 2. Real-time Listeners implemented via high-fidelity, light polling
-  listenToSessions(dbRef: any, callback: (sessions: Session[]) => void): () => void {
+  listenToSessions(dbRef: any, callback: (sessions: Session[]) => void, pollInterval: number = 3000): () => void {
     const fetchSessions = async () => {
       try {
         const { data, error } = await neonClient.from('class_sessions').select('*').order('created_at', { ascending: false });
@@ -84,14 +84,16 @@ export const AttendanceService = {
     };
 
     fetchSessions();
-    const intervalId = setInterval(fetchSessions, 3000);
+    if (pollInterval <= 0) return () => {};
+    const intervalId = setInterval(fetchSessions, pollInterval);
     return () => clearInterval(intervalId);
   },
 
   listenToAttendances(
     dbRef: any,
     sessionId: string,
-    callback: (attendances: Attendance[]) => void
+    callback: (attendances: Attendance[]) => void,
+    pollInterval: number = 3000
   ): () => void {
     const fetchAttendances = async () => {
       try {
@@ -122,7 +124,8 @@ export const AttendanceService = {
     };
 
     fetchAttendances();
-    const intervalId = setInterval(fetchAttendances, 3000);
+    if (pollInterval <= 0) return () => {};
+    const intervalId = setInterval(fetchAttendances, pollInterval);
     return () => clearInterval(intervalId);
   },
 
@@ -193,7 +196,7 @@ export const AttendanceService = {
     }
   },
 
-  listenToSubjects(dbRef: any, teacherUid: string, callback: (subjects: any[]) => void): () => void {
+  listenToSubjects(dbRef: any, teacherUid: string, callback: (subjects: any[]) => void, pollInterval: number = 4000): () => void {
     const fetchSubjects = async () => {
       try {
         const { data, error } = await neonClient.from('subjects')
@@ -217,7 +220,8 @@ export const AttendanceService = {
     };
 
     fetchSubjects();
-    const intervalId = setInterval(fetchSubjects, 4000);
+    if (pollInterval <= 0) return () => {};
+    const intervalId = setInterval(fetchSubjects, pollInterval);
     return () => clearInterval(intervalId);
   }
 };
