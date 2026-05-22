@@ -12,6 +12,7 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
   const [selectedRole, setSelectedRole] = useState<UserRole>("student");
   const [customName, setCustomName] = useState<string>("");
   const [customStudentId, setCustomStudentId] = useState<string>("");
+  const [teacherPin, setTeacherPin] = useState<string>("");
   const [customEmail, setCustomEmail] = useState<string>("");
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [googleUser, setGoogleUser] = useState<any>(null);
@@ -69,6 +70,14 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
     if (!googleUser) return;
     if (!customName.trim() || !customEmail.trim()) return;
     if (selectedRole === "student" && !customStudentId.trim()) return;
+    
+    if (selectedRole === "teacher") {
+      const correctPin = import.meta.env.VITE_TEACHER_PIN;
+      if (teacherPin !== correctPin) {
+        setErrorMsg("รหัส 6 หลักสำหรับอาจารย์ไม่ถูกต้อง");
+        return;
+      }
+    }
 
     try {
       setIsVerifying(true);
@@ -171,6 +180,21 @@ export const AuthLayout: React.FC<AuthLayoutProps> = ({ onLogin }) => {
                     placeholder="กรอกรหัส 8 หลัก เช่น 64020993"
                     value={customStudentId}
                     onChange={(e) => setCustomStudentId(e.target.value)}
+                    className="w-full text-xs border border-slate-200 rounded-xl px-3.5 py-2.5 focus:border-[#12b19d] focus:outline-none"
+                    required
+                  />
+                </div>
+              )}
+
+              {selectedRole === "teacher" && (
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-500 mb-1">รหัสสำหรับอาจารย์ (6 หลัก)</label>
+                  <input
+                    type="password"
+                    maxLength={6}
+                    placeholder="กรอกรหัส 6 หลัก"
+                    value={teacherPin}
+                    onChange={(e) => setTeacherPin(e.target.value)}
                     className="w-full text-xs border border-slate-200 rounded-xl px-3.5 py-2.5 focus:border-[#12b19d] focus:outline-none"
                     required
                   />
